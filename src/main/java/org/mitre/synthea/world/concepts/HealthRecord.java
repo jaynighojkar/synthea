@@ -585,6 +585,7 @@ public class HealthRecord implements Serializable {
   public enum EncounterType {
     WELLNESS("AMB"), AMBULATORY("AMB"), OUTPATIENT("AMB"),
     INPATIENT("IMP"), EMERGENCY("EMER"), URGENTCARE("AMB"),
+    ACUTE("ACUTE"),OBSERVATION("OBSENC "),STAY("SS"),
     HOSPICE("HH"), HOME("HH"), SNF("IMP"), VIRTUAL("VR");
 
     // http://www.hl7.org/implement/standards/fhir/v3/ActEncounterCode/vs.html

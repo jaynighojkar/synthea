@@ -290,6 +290,10 @@ public abstract class ExportHelper {
             "https://github.com/synthetichealth/synthea", identifier);
   }
 
+  public static String buildFhirSearchUrlId(String resourceType, String id) {
+    return String.format("%s/%s", resourceType, id);
+  }
+
   /**
    * Build a FHIR search URL for a clinician using the clinician's NPI identifier.
    * @param clinician the Synthea clinician instance
@@ -298,10 +302,9 @@ public abstract class ExportHelper {
   public static String buildFhirNpiSearchUrl(Clinician clinician) {
     if (clinician == null) {
       return null;
-    } else {
-      return String.format("%s?identifier=%s|%s", "Practitioner",
-              "http://hl7.org/fhir/sid/us-npi", clinician.npi);
-    }
+    } else {    
+        return String.format("%s/%s","Practitioner", clinician.uuid);      
+      }
   }
 
   /**

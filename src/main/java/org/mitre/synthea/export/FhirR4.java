@@ -8,6 +8,9 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import java.time.Instant;
+import org.cqframework.cql.elm.execution.In;
+
 import java.awt.geom.Point2D;
 import java.io.IOException;
 import java.util.AbstractMap;
@@ -143,10 +146,10 @@ import org.mitre.synthea.engine.Components.Attachment;
 import org.mitre.synthea.export.rif.CodeMapper;
 import org.mitre.synthea.helpers.Config;
 import org.mitre.synthea.helpers.RandomNumberGenerator;
-import org.mitre.synthea.helpers.RandomValueGenerator;
 import org.mitre.synthea.helpers.SimpleCSV;
 import org.mitre.synthea.helpers.Utilities;
 import org.mitre.synthea.identity.Entity;
+import org.mitre.synthea.modules.EncounterModule;
 import org.mitre.synthea.world.agents.Clinician;
 import org.mitre.synthea.world.agents.Payer;
 import org.mitre.synthea.world.agents.Person;
@@ -165,6 +168,7 @@ import org.mitre.synthea.world.concepts.HealthRecord.Observation;
 import org.mitre.synthea.world.concepts.HealthRecord.Procedure;
 import org.mitre.synthea.world.concepts.HealthRecord.Report;
 import org.mitre.synthea.world.geography.Location;
+import org.mitre.synthea.export.CMS_CCLF_MBI;
 
 public class FhirR4 {
   // HAPI FHIR warns that the context creation is expensive, and should be performed
@@ -532,6 +536,13 @@ public class FhirR4 {
     return bundleJson;
   }
 
+  // public static int mbi_num =0;
+  public static int male_patient_mbi_num, female_patient_mbi_num =0;
+  public static String[] mbiMaleValues = CMS_CCLF_MBI.getCMS_CCLF_MBI_MALE_VALUES();
+  public static String[] mbiFemaleValues = CMS_CCLF_MBI.getCMS_CCLF_MBI_FEMALE_VALUES();
+  public static int mbiMaleValuesLength = mbiMaleValues.length;
+  public static int mbiFemaleValuesLength = mbiFemaleValues.length;
+
   /**
    * Map the given Person to a FHIR Patient resource, and add it to the given Bundle.
    *
@@ -543,14 +554,13 @@ public class FhirR4 {
   @SuppressWarnings("rawtypes")
   private static BundleEntryComponent basicInfo(Person person, Bundle bundle, long stopTime) {
     Patient patientResource = new Patient();
-
     patientResource.addIdentifier().setSystem(SYNTHEA_IDENTIFIER)
         .setValue((String) person.attributes.get(Person.ID));
 
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient").setLastUpdated(Date.from(Instant.now()));
       patientResource.setMeta(meta);
     }
 
@@ -747,6 +757,41 @@ public class FhirR4 {
     } else if (person.attributes.get(Person.GENDER).equals("UNK")) {
       patientResource.setGender(AdministrativeGender.UNKNOWN);
     }
+
+    String male_mbi_id = "", female_mbi_id = "";
+    if(male_patient_mbi_num < mbiMaleValuesLength)
+    {
+      male_mbi_id = mbiMaleValues[male_patient_mbi_num];
+    }    
+    else
+    {
+      male_mbi_id = "";
+    }
+    if(female_patient_mbi_num < mbiFemaleValuesLength)
+    {
+      female_mbi_id = mbiFemaleValues[female_patient_mbi_num];
+    }    
+    else
+    {
+      female_mbi_id = "";
+    }
+
+    if(male_mbi_id != "" && person.attributes.get(Person.GENDER).equals("M")){
+    Code mbiCode = new Code("http://hl7.org/fhir/sid/us-mbi", "MBI", "Medicare Beneficiary Identifier");
+    patientResource.addIdentifier()
+        .setType(mapCodeToCodeableConcept(mbiCode, "http://terminology.hl7.org/CodeSystem/v2-0203"))
+        .setSystem("http://hl7.org/fhir/sid/us-mbi")
+        .setValue(male_mbi_id);
+        male_patient_mbi_num++;
+    } else if(female_mbi_id != "" && person.attributes.get(Person.GENDER).equals("F")){
+      Code mbiCode = new Code("http://hl7.org/fhir/sid/us-mbi", "MBI", "Medicare Beneficiary Identifier");
+      patientResource.addIdentifier()
+          .setType(mapCodeToCodeableConcept(mbiCode, "http://terminology.hl7.org/CodeSystem/v2-0203"))
+          .setSystem("http://hl7.org/fhir/sid/us-mbi")
+          .setValue(female_mbi_id);
+          female_patient_mbi_num++;
+      }    
+
     if (USE_US_CORE_IG) {
       patientResource.addExtension(birthSexExtension);
     }
@@ -758,6 +803,7 @@ public class FhirR4 {
     Address addrResource = patientResource.addAddress();
     addrResource.addLine((String) person.attributes.get(Person.ADDRESS))
         .setCity((String) person.attributes.get(Person.CITY))
+        .setDistrict(person.attributes.get(Person.COUNTY) != null ? (String) person.attributes.get(Person.COUNTY) : "")
         .setPostalCode((String) person.attributes.get(Person.ZIP))
         .setState(state);
     if (COUNTRY_CODE != null) {
@@ -889,6 +935,7 @@ public class FhirR4 {
       Meta meta = new Meta();
       meta.addProfile(
           "http://hl7.org/fhir/us/core/StructureDefinition/us-core-encounter");
+      meta.setLastUpdated(new Date(encounter.start));
       encounterResource.setMeta(meta);
     }
 
@@ -993,12 +1040,72 @@ public class FhirR4 {
 
     if (encounter.discharge != null) {
       EncounterHospitalizationComponent hospitalization = new EncounterHospitalizationComponent();
+           
+      CodeableConcept readmission = new CodeableConcept();        
+      readmission.addCoding()
+      .setSystem("http://terminology.hl7.org/CodeSystem/v2-0092")
+      .setCode("R")
+      .setDisplay("Re-admission");
+      readmission.setText("Re-admission"); 
+      
       Code dischargeDisposition = new Code(DISCHARGE_URI, encounter.discharge.code,
           encounter.discharge.display);
       hospitalization
           .setDischargeDisposition(mapCodeToCodeableConcept(dischargeDisposition, DISCHARGE_URI));
+      hospitalization.setReAdmission(readmission);
       encounterResource.setHospitalization(hospitalization);
     }
+
+    // if(encounter.type.equals(EncounterType.OUTPATIENT.toString())) {      
+
+    // CodeableConcept serviceType = new CodeableConcept();
+    // serviceType.addCoding()
+    //     .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+    //     .setCode("165")
+    //     .setDisplay("Cardiology");
+
+    // encounterResource.setServiceType(serviceType);    
+    // }
+    // else 
+    if(encounter.type.equals(EncounterType.AMBULATORY.toString())) {  
+      
+      int randomServiceType = (int) (Math.random() * 16) + 1;
+
+      String type = EncounterModule.EncounterTypeToServiceTypeMap(randomServiceType).values().iterator().next();
+
+      String[] encounterSpecificServiceType = type.split(",");
+      
+      if ((encounterSpecificServiceType != null)) {
+        
+        CodeableConcept serviceType = new CodeableConcept();
+      serviceType.addCoding()
+          .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+          .setCode(encounterSpecificServiceType[0])
+          .setDisplay(encounterSpecificServiceType[1]);
+  
+      encounterResource.setServiceType(serviceType);   
+      }       
+    }
+      // else if(encounter.type.equals(EncounterType.EMERGENCY.toString())) {      
+
+      //   CodeableConcept serviceType = new CodeableConcept();
+      //   serviceType.addCoding()
+      //       .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+      //       .setCode("454")
+      //       .setDisplay("Stroke");
+    
+      //   encounterResource.setServiceType(serviceType);    
+      //   }
+      //   else {      
+
+      //     CodeableConcept serviceType = new CodeableConcept();
+      //     serviceType.addCoding()
+      //         .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+      //         .setCode("446")
+      //         .setDisplay("Speech Therapist");
+      
+      //     encounterResource.setServiceType(serviceType);    
+      //     }
 
     BundleEntryComponent entry = newEntry(bundle, encounterResource, encounter.uuid.toString());
     if (USE_US_CORE_IG) {
@@ -1095,7 +1202,7 @@ public class FhirR4 {
       if (entry.getResource().fhirType().equals("Practitioner")) {
         Practitioner doc = (Practitioner) entry.getResource();
         if (doc.getIdentifierFirstRep().getValue().equals(clinician.npi)) {
-          return entry.getFullUrl();
+          return entry.getId();
         }
       }
     }
@@ -1126,6 +1233,9 @@ public class FhirR4 {
         (org.hl7.fhir.r4.model.Encounter) encounterEntry.getResource();
 
     claimResource.setStatus(ClaimStatus.ACTIVE);
+    // claimResource.setMeta(new Meta().addProfile("https://www.hl7.org/fhir/R4/claim.html").setLastUpdated(Date.from(Instant.now())));
+    // claimResource.setMeta(new Meta().setLastUpdated(Date.from(Instant.now())));    
+    claimResource.setMeta(new Meta().setLastUpdated(new Date(encounter.start)));
     CodeableConcept type = new CodeableConcept();
     type.getCodingFirstRep()
       .setSystem("http://terminology.hl7.org/CodeSystem/claim-type")
@@ -1325,6 +1435,12 @@ public class FhirR4 {
                                            Person person, BundleEntryComponent claimEntry,
                                            Encounter encounter, Claim claim) {
     ExplanationOfBenefit eob = new ExplanationOfBenefit();
+    Meta meta = new Meta();
+      // meta.addProfile(
+      //     "https://www.hl7.org/fhir/R4/explanationofbenefit.html").setLastUpdated(Date.from(Instant.now()));
+    meta.setLastUpdated(new Date(encounter.start));
+    eob.setMeta(meta);
+
     eob.setStatus(org.hl7.fhir.r4.model.ExplanationOfBenefit.ExplanationOfBenefitStatus.ACTIVE);
     eob.setType(new CodeableConcept()
         .addCoding(new Coding()
@@ -1643,10 +1759,10 @@ public class FhirR4 {
       Meta meta = new Meta();
       if (useUSCore5() || useUSCore6()) {
         meta.addProfile(
-            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-encounter-diagnosis");
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-encounter-diagnosis").setLastUpdated(new Date(condition.start));
       } else {
         meta.addProfile(
-            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition");
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition").setLastUpdated(new Date(condition.start));
       }
       conditionResource.setMeta(meta);
       conditionResource.addCategory(new CodeableConcept().addCoding(new Coding(
@@ -1783,8 +1899,9 @@ public class FhirR4 {
 
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
-      meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-allergyintolerance");
+      // meta.addProfile(
+      //     "http://hl7.org/fhir/us/core/StructureDefinition/us-core-allergyintolerance").setLastUpdated(Date.from(Instant.now()));
+      meta.setLastUpdated(Date.from(Instant.now()));
       allergyResource.setMeta(meta);
     }
     BundleEntryComponent allergyEntry = newEntry(bundle, allergyResource, allergy.uuid.toString());
@@ -1858,61 +1975,63 @@ public class FhirR4 {
 
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
+      meta.setLastUpdated(Date.from(Instant.now()));
       // add the specific profile based on code
       String codeMappingUri = US_CORE_MAPPING.get(LOINC_URI, code.code);
       if (codeMappingUri != null) {
         meta.addProfile(codeMappingUri);
         if (!codeMappingUri.contains("/us/core/") && observation.category.equals("vital-signs")) {
-          meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs");
+          meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs").setLastUpdated(Date.from(Instant.now()));
         }
       } else if (observation.report != null && observation.category.equals("laboratory")) {
-        meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab");
+        meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab").setLastUpdated(Date.from(Instant.now()));
       }
 
       if (observation.category != null) {
         if (useUSCore6()) {
           switch (observation.category) {
             case "imaging":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-result");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-result").setLastUpdated(Date.from(Instant.now()));
               break;
             case "social-history":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-simple-observation");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-simple-observation").setLastUpdated(Date.from(Instant.now()));
               break;
             case "survey":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-screening-assessment");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-screening-assessment").setLastUpdated(Date.from(Instant.now()));
               break;
             case "exam":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-result");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-result").setLastUpdated(Date.from(Instant.now()));
               break;
             case "laboratory":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab").setLastUpdated(Date.from(Instant.now()));
               break;
             default:
-              // do nothing
+            meta.setLastUpdated(Date.from(Instant.now()));
+            break;
           }
         } else if (useUSCore5()) {
           switch (observation.category) {
             case "imaging":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-imaging");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-imaging").setLastUpdated(Date.from(Instant.now()));
               break;
             case "social-history":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-social-history");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-social-history").setLastUpdated(Date.from(Instant.now()));
               break;
             case "survey":
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-survey");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-survey").setLastUpdated(Date.from(Instant.now()));
               // note that the -sdoh-assessment profile is a subset of -survey,
               // those are handled by code in US_CORE_MAPPING above
               break;
             case "exam":
               // this one is a little nebulous -- are all exams also clinical tests?
-              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-test");
+              meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-test").setLastUpdated(Date.from(Instant.now()));
 
               observationResource.addCategory().addCoding().setCode("clinical-test")
                   .setSystem("http://hl7.org/fhir/us/core/CodeSystem/us-core-observation-category")
                   .setDisplay("Clinical Test");
               break;
-            default:
-              // do nothing
+              default:meta.setLastUpdated(Date.from(Instant.now()));
+              break;
           }
         }
       }
@@ -2008,7 +2127,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-procedure");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-procedure").setLastUpdated(new Date(procedure.start));
       procedureResource.setMeta(meta);
     }
     procedureResource.setStatus(ProcedureStatus.COMPLETED);
@@ -2067,7 +2186,7 @@ public class FhirR4 {
     Device deviceResource = new Device();
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
-      meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-implantable-device");
+      meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-implantable-device").setLastUpdated(Date.from(Instant.now()));
       deviceResource.setMeta(meta);
     }
     deviceResource.addUdiCarrier()
@@ -2109,6 +2228,11 @@ public class FhirR4 {
     SupplyDelivery supplyResource = new SupplyDelivery();
     supplyResource.setStatus(SupplyDeliveryStatus.COMPLETED);
     supplyResource.setPatient(new Reference(personEntry.getFullUrl()));
+    Meta meta = new Meta();
+      // meta.addProfile(
+      //     "https://www.hl7.org/fhir/R4/supplydelivery.html").setLastUpdated(Date.from(Instant.now()));
+    meta.setLastUpdated(Date.from(Instant.now()));
+    supplyResource.setMeta(meta);
 
     CodeableConcept type = new CodeableConcept();
     type.addCoding()
@@ -2141,8 +2265,7 @@ public class FhirR4 {
     Provenance provenance = new Provenance();
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
-      meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-provenance");
+      meta.setLastUpdated(Date.from(Instant.now()));      
       provenance.setMeta(meta);
     }
     for (BundleEntryComponent entry : bundle.getEntry()) {
@@ -2234,7 +2357,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-immunization");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-immunization").setLastUpdated(new Date(immunization.start));
       immResource.setMeta(meta);
     }
 
@@ -2275,7 +2398,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest").setLastUpdated(new Date(medication.start));
       medicationResource.setMeta(meta);
 
       Code category = new Code("http://terminology.hl7.org/CodeSystem/medicationrequest-category",
@@ -2303,7 +2426,7 @@ public class FhirR4 {
           new org.hl7.fhir.r4.model.Medication();
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-medication");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-medication").setLastUpdated(new Date(medication.start));
       drugResource.setMeta(meta);
       drugResource.setCode(medicationCodeableConcept);
       drugResource.setStatus(MedicationStatus.ACTIVE);
@@ -2537,14 +2660,13 @@ public class FhirR4 {
     for (Observation observation : report.observations) {
       labsOnly = labsOnly && observation.category.equalsIgnoreCase("laboratory");
     }
-    if (labsOnly && USE_US_CORE_IG) {
-      Meta meta = new Meta();
-      meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab");
-      reportResource.setMeta(meta);
+    if (labsOnly && USE_US_CORE_IG) {      
       org.hl7.fhir.r4.model.Encounter encounterResource =
           (org.hl7.fhir.r4.model.Encounter) encounterEntry.getResource();
-      reportResource.addPerformer(encounterResource.getServiceProvider());
+      reportResource.addPerformer(encounterResource.getServiceProvider());      
+      Meta meta = new Meta();
+      meta.setLastUpdated(new Date(report.start));
+      reportResource.setMeta(meta);
     }
     reportResource.setStatus(DiagnosticReportStatus.FINAL);
     if (labsOnly) {
@@ -2593,7 +2715,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-note");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-note").setLastUpdated(encounter.getPeriod().getStart());
       reportResource.setMeta(meta);
     }
     reportResource.setStatus(DiagnosticReportStatus.FINAL);
@@ -2628,7 +2750,7 @@ public class FhirR4 {
       if (USE_US_CORE_IG) {
         Meta meta = new Meta();
         meta.addProfile(
-            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-documentreference");
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-documentreference").setLastUpdated(encounter.getPeriod().getStart());
         documentReference.setMeta(meta);
       }
       if (currentNote) {
@@ -2682,7 +2804,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-careplan");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-careplan").setLastUpdated(new Date(carePlan.start));
       careplanResource.setMeta(meta);
       careplanResource.addCategory(mapCodeToCodeableConcept(
           new Code("http://hl7.org/fhir/us/core/CodeSystem/careplan-category", "assess-plan",
@@ -2794,7 +2916,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-goal");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-goal").setLastUpdated(new Date(carePlanStart));
       goalResource.setMeta(meta);
     }
     goalResource.setLifecycleStatus(GoalLifecycleStatus.ACCEPTED);
@@ -2884,7 +3006,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam").setLastUpdated(new Date(carePlan.start));
       careTeam.setMeta(meta);
     }
 
@@ -3115,7 +3237,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-organization");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-organization").setLastUpdated(Date.from(Instant.now()));
       organizationResource.setMeta(meta);
     }
 
@@ -3185,7 +3307,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-location");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-location").setLastUpdated(Date.from(Instant.now()));
       location.setMeta(meta);
     }
     location.setStatus(LocationStatus.ACTIVE);
@@ -3225,6 +3347,9 @@ public class FhirR4 {
     location.setManagingOrganization(new Reference()
         .setIdentifier(organizationIdentifier)
         .setDisplay(provider.name));
+    if(location.getMeta() == null) {
+    location.setMeta(new Meta().setLastUpdated(Date.from(Instant.now())));
+    }
     return location;
   }
 
@@ -3240,7 +3365,7 @@ public class FhirR4 {
     if (USE_US_CORE_IG) {
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-practitioner");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-practitioner").setLastUpdated(Date.from(Instant.now()));
       practitionerResource.setMeta(meta);
     }
     practitionerResource.addIdentifier()
@@ -3286,17 +3411,13 @@ public class FhirR4 {
       PractitionerRole practitionerRole = new PractitionerRole();
       Meta meta = new Meta();
       meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-practitionerrole");
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-practitionerrole").setLastUpdated(Date.from(Instant.now()));
       practitionerRole.setMeta(meta);
       practitionerRole.setPractitioner(new Reference()
-          .setIdentifier(new Identifier()
-                  .setSystem("http://hl7.org/fhir/sid/us-npi")
-                  .setValue(clinician.npi))
+          .setReference(ExportHelper.buildFhirNpiSearchUrl(clinician))
           .setDisplay(practitionerResource.getNameFirstRep().getNameAsSingleString()));
       practitionerRole.setOrganization(new Reference()
-          .setIdentifier(new Identifier()
-                  .setSystem(SYNTHEA_IDENTIFIER)
-                  .setValue(clinician.getOrganization().getResourceID()))
+          .setReference(ExportHelper.buildFhirSearchUrlId("Organization", clinician.getOrganization().getResourceID()))
           .setDisplay(clinician.getOrganization().name));
       practitionerRole.addCode(
           mapCodeToCodeableConcept(

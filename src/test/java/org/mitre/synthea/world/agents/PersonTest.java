@@ -322,6 +322,11 @@ public class PersonTest {
 
     // Check that the two files are identical
     for (int i = 0; i < fileContents.get(0).size(); i++) {
+      //ignore lastUpdated becuase it is unique on every instantiation of a resource
+      if(fileContents.get(0).get(i).contains("lastUpdated"))
+      {        
+        continue;
+      }
       assertEquals(fileContents.get(0).get(i), fileContents.get(1).get(i));
     }
   }

@@ -5,9 +5,11 @@ import com.google.common.base.Strings;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -504,7 +506,7 @@ public abstract class Exporter {
         if (writer == null) {
           try {
             writer = new PrintWriter(
-              new BufferedWriter(new FileWriter(file.toFile(), true), FILE_BUFFER_SIZE)
+              new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file.toFile(), true), StandardCharsets.UTF_8), FILE_BUFFER_SIZE)
             );
           } catch (IOException e) {
             e.printStackTrace();

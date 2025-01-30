@@ -1,9 +1,11 @@
 package org.mitre.synthea.modules;
 
+import java.lang.module.ModuleDescriptor.Requires;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
 
+import org.checkerframework.checker.units.qual.s;
 import org.mitre.synthea.engine.Module;
 import org.mitre.synthea.helpers.Attributes;
 import org.mitre.synthea.helpers.Attributes.Inventory;
@@ -11,6 +13,7 @@ import org.mitre.synthea.helpers.Utilities;
 import org.mitre.synthea.world.agents.Person;
 import org.mitre.synthea.world.agents.Provider;
 import org.mitre.synthea.world.concepts.ClinicianSpecialty;
+import org.mitre.synthea.world.concepts.HealthRecord.Allergy;
 import org.mitre.synthea.world.concepts.HealthRecord.Code;
 import org.mitre.synthea.world.concepts.HealthRecord.Encounter;
 import org.mitre.synthea.world.concepts.HealthRecord.EncounterType;
@@ -258,7 +261,29 @@ public final class EncounterModule extends Module {
   public static Collection<Code> getAllCodes() {
     return Arrays.asList(ENCOUNTER_CHECKUP, ENCOUNTER_EMERGENCY,
         WELL_CHILD_VISIT, GENERAL_EXAM, ENCOUNTER_URGENTCARE);
+  }  
+
+  public static Map<Integer, String> EncounterTypeToServiceTypeMap(int i) {
+    return Map.ofEntries(
+      Map.entry(1, "276,Cardiovascular Disease"),
+      Map.entry(2, "533,Cardiac Rehabilitation Service"),
+      Map.entry(3, "354,Heart Disease"),
+      Map.entry(4, "430,Respiratory"),
+      Map.entry(5, "535,Pulmonary Rehabilitation Service"),
+      Map.entry(6, "172,Immunology & Allergy"),
+      Map.entry(7, "254,Asthma"),
+      Map.entry(8, "177,Neurology"),
+      Map.entry(9, "568,Men's Health Clinic"),
+      Map.entry(10, "361,Hospital Services"),
+      Map.entry(11, "480,Gastroenterology"),
+      Map.entry(12, "479,Hepatology"),
+      Map.entry(13, "60,Nutrition"),
+      Map.entry(14, "269,Bowel"),
+      Map.entry(15, "141,Psychiatry"),
+      Map.entry(16, "576,Rehabilitation")
+    );
   }
+
 
   /**
    * Populate the given attribute map with the list of attributes that this

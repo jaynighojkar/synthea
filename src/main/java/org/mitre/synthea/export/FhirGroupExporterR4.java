@@ -8,10 +8,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Date;
 
+import org.hl7.fhir.r4.model.Meta;
 import org.hl7.fhir.r4.model.Group;
 import org.hl7.fhir.r4.model.Group.GroupType;
 import org.hl7.fhir.r4.model.Reference;
@@ -55,6 +58,9 @@ public abstract class FhirGroupExporterR4 {
     group.setActual(true);
     group.setName("Synthea Patients");
     group.setQuantity(patientList.size());
+    Meta meta = new Meta();
+    meta.setLastUpdated(Date.from(Instant.now()));
+    group.setMeta(meta);    
     for (String resourceId : patientList) {
       group.addMember().setEntity(new Reference(FhirR4.getUrlPrefix("Patient") + resourceId));
     }
