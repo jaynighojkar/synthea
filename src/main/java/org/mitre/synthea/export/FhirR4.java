@@ -9,6 +9,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+
 import org.cqframework.cql.elm.execution.In;
 
 import java.awt.geom.Point2D;
@@ -34,6 +36,7 @@ import org.hl7.fhir.r4.model.AllergyIntolerance;
 import org.hl7.fhir.r4.model.AllergyIntolerance.AllergyIntoleranceCategory;
 import org.hl7.fhir.r4.model.AllergyIntolerance.AllergyIntoleranceCriticality;
 import org.hl7.fhir.r4.model.AllergyIntolerance.AllergyIntoleranceType;
+import org.hl7.fhir.r4.model.Appointment;
 import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
@@ -168,8 +171,6 @@ import org.mitre.synthea.world.concepts.HealthRecord.Observation;
 import org.mitre.synthea.world.concepts.HealthRecord.Procedure;
 import org.mitre.synthea.world.concepts.HealthRecord.Report;
 import org.mitre.synthea.world.geography.Location;
-import org.mitre.synthea.export.CMS_CCLF_MBI;
-
 public class FhirR4 {
   // HAPI FHIR warns that the context creation is expensive, and should be performed
   // per-application, not per-record
@@ -204,6 +205,8 @@ public class FhirR4 {
   private static final Table<String, String, String> US_CORE_4_MAPPING;
   private static final Table<String, String, String> US_CORE_5_MAPPING;
   private static final Table<String, String, String> US_CORE_6_MAPPING;
+
+  private static boolean firstVR_Encounter = true;
 
   public static enum USCoreVersion {
     v311, v400, v501, v610
@@ -492,6 +495,17 @@ public class FhirR4 {
         }
       }
 
+      // add appointment to every encounter as well
+      if (shouldExport(org.hl7.fhir.r4.model.Appointment.class)) {
+        encounterAppointment(person, personEntry, bundle, encounter, encounterEntry);
+      }
+
+      // add allergy intolerance to every encounter as well
+      // if (shouldExport(org.hl7.fhir.r4.model.AllergyIntolerance.class)) {
+      //   allergyIntolerance(personEntry, bundle, encounterEntry, allergy)
+    
+      // }
+
       if (USE_US_CORE_IG && shouldExport(DiagnosticReport.class)) {
         String clinicalNoteText = ClinicalNoteExporter.export(person, encounter);
         boolean lastNote =
@@ -555,14 +569,7 @@ public class FhirR4 {
   private static BundleEntryComponent basicInfo(Person person, Bundle bundle, long stopTime) {
     Patient patientResource = new Patient();
     patientResource.addIdentifier().setSystem(SYNTHEA_IDENTIFIER)
-        .setValue((String) person.attributes.get(Person.ID));
-
-    if (USE_US_CORE_IG) {
-      Meta meta = new Meta();
-      meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient").setLastUpdated(Date.from(Instant.now()));
-      patientResource.setMeta(meta);
-    }
+        .setValue((String) person.attributes.get(Person.ID));  
 
     Code mrnCode = new Code("http://terminology.hl7.org/CodeSystem/v2-0203", "MR", "Medical Record Number");
     patientResource.addIdentifier()
@@ -790,9 +797,17 @@ public class FhirR4 {
           .setSystem("http://hl7.org/fhir/sid/us-mbi")
           .setValue(female_mbi_id);
           female_patient_mbi_num++;
-      }    
+      }
 
     if (USE_US_CORE_IG) {
+      Meta meta = new Meta();
+      meta.addProfile(
+          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient").setLastUpdated(Date.from(Instant.now()));
+      if(male_mbi_id != "" || female_mbi_id != "")
+      {
+        meta.setSource("CMA_Claims_CCLF");
+      }   
+      patientResource.setMeta(meta);
       patientResource.addExtension(birthSexExtension);
     }
 
@@ -1056,22 +1071,19 @@ public class FhirR4 {
       encounterResource.setHospitalization(hospitalization);
     }
 
-    // if(encounter.type.equals(EncounterType.OUTPATIENT.toString())) {      
+    if(encounter.type.equals(EncounterType.INPATIENT.toString())) {      
 
-    // CodeableConcept serviceType = new CodeableConcept();
-    // serviceType.addCoding()
-    //     .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
-    //     .setCode("165")
-    //     .setDisplay("Cardiology");
+    CodeableConcept serviceType = new CodeableConcept();
+    serviceType.addCoding()
+        .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+        .setCode("165")
+        .setDisplay("Cardiology");
 
-    // encounterResource.setServiceType(serviceType);    
-    // }
-    // else 
-    if(encounter.type.equals(EncounterType.AMBULATORY.toString())) {  
-      
-      int randomServiceType = (int) (Math.random() * 16) + 1;
+    encounterResource.setServiceType(serviceType);    
+    }
+    else if(encounter.type.equals(EncounterType.AMBULATORY.toString())) {
 
-      String type = EncounterModule.EncounterTypeToServiceTypeMap(randomServiceType).values().iterator().next();
+      String type = EncounterModule.getServiceTypeByEncounterType(4);
 
       String[] encounterSpecificServiceType = type.split(",");
       
@@ -1086,26 +1098,71 @@ public class FhirR4 {
       encounterResource.setServiceType(serviceType);   
       }       
     }
-      // else if(encounter.type.equals(EncounterType.EMERGENCY.toString())) {      
+    else if(encounter.type.equals(EncounterType.OBSERVATION.toString())) {      
 
-      //   CodeableConcept serviceType = new CodeableConcept();
-      //   serviceType.addCoding()
-      //       .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
-      //       .setCode("454")
-      //       .setDisplay("Stroke");
-    
-      //   encounterResource.setServiceType(serviceType);    
-      //   }
-      //   else {      
+      CodeableConcept serviceType = new CodeableConcept();
+      serviceType.addCoding()
+          .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+          .setCode("183")
+          .setDisplay("Sleep Medicine");  
+      encounterResource.setServiceType(serviceType);    
+      }
+      else if(encounter.type.equals(EncounterType.ACUTE.toString())) {      
 
-      //     CodeableConcept serviceType = new CodeableConcept();
-      //     serviceType.addCoding()
-      //         .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
-      //         .setCode("446")
-      //         .setDisplay("Speech Therapist");
-      
-      //     encounterResource.setServiceType(serviceType);    
-      //     }
+        CodeableConcept serviceType = new CodeableConcept();
+        serviceType.addCoding()
+            .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+            .setCode("454")
+            .setDisplay("Stroke");  
+        encounterResource.setServiceType(serviceType);    
+        }
+        else if(encounter.type.equals(EncounterType.STAY.toString())) {      
+
+          CodeableConcept serviceType = new CodeableConcept();
+          serviceType.addCoding()
+              .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+              .setCode("219")
+              .setDisplay("Otolaryngology - Head & Neck Surgery");  
+          encounterResource.setServiceType(serviceType);    
+          }
+          else if(encounter.type.equals(EncounterType.VIRTUAL.toString())) {            
+            if(firstVR_Encounter){
+
+            CodeableConcept serviceType = new CodeableConcept();
+            serviceType.addCoding()
+                .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+                .setCode("239")
+                .setDisplay("Adult Mental Health Services");  
+            encounterResource.setServiceType(serviceType);    
+            }
+            else{
+            
+              CodeableConcept serviceType = new CodeableConcept();
+              serviceType.addCoding()
+                  .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+                  .setCode("142")
+                  .setDisplay("Psychology");  
+              encounterResource.setServiceType(serviceType); 
+            }
+            firstVR_Encounter = !firstVR_Encounter;
+          }
+      else if(encounter.type.equals(EncounterType.EMERGENCY.toString())) {      
+
+        CodeableConcept serviceType = new CodeableConcept();
+        serviceType.addCoding()
+            .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+            .setCode("308")
+            .setDisplay("Crisis Assessment And Treatment Services (Cats)");    
+        encounterResource.setServiceType(serviceType);    
+        }
+        else {
+          CodeableConcept serviceType = new CodeableConcept();
+          serviceType.addCoding()
+              .setSystem("http://terminology.hl7.org/CodeSystem/service-type")
+              .setCode("124")
+              .setDisplay("General Practice/GP (doctor)");      
+          encounterResource.setServiceType(serviceType);    
+        }
 
     BundleEntryComponent entry = newEntry(bundle, encounterResource, encounter.uuid.toString());
     if (USE_US_CORE_IG) {
@@ -1117,6 +1174,110 @@ public class FhirR4 {
           .setValue(encounterResource.getId());
     }
     return entry;
+  }
+
+  private static BundleEntryComponent encounterAppointment(Person person, BundleEntryComponent personEntry,
+                                                           Bundle bundle, Encounter encounter,
+                                                           BundleEntryComponent encounterEntry) {
+
+    org.hl7.fhir.r4.model.Appointment apptResource = new org.hl7.fhir.r4.model.Appointment();
+    apptResource.setId(String.valueOf(UUID.randomUUID()));
+
+    // convert participant
+    org.hl7.fhir.r4.model.Encounter encounterResource =
+            (org.hl7.fhir.r4.model.Encounter) encounterEntry.getResource();
+
+    //status
+    apptResource.setStatus(Appointment.AppointmentStatus.PROPOSED);
+
+    // identifier
+    List<Identifier> identifierList = new ArrayList<>();
+    identifierList.add(new Identifier()
+            .setSystem("http://fhir.league.com/r4/LeagueUserProfiles/NamingSystem/league-user-id")
+            .setValue((String) person.attributes.get(Person.ID)));
+
+    apptResource.setIdentifier(identifierList);
+    apptResource.setMeta(new Meta().setLastUpdated(new Date(encounter.start)));
+
+    // appt type
+    CodeableConcept aTypeCC = new CodeableConcept();
+    aTypeCC.setText("Appt Type");
+    Coding apptTypeCoding = aTypeCC.addCoding().setCode("apptType")
+            .setDisplay("Appt Type display").setSystem("appt Type System");
+
+    apptResource.setAppointmentType(aTypeCC);
+
+    // serviceCategory
+    List<org.hl7.fhir.r4.model.CodeableConcept> categories = new ArrayList<>();
+    CodeableConcept cc = new CodeableConcept();
+    cc.setText("category 1");
+    Coding serviceCatCoding = cc.addCoding();
+    serviceCatCoding.setDisplay("cat 1 display");
+    serviceCatCoding.setSystem("cat 1 system");
+    serviceCatCoding.setCode("cat1");
+
+    categories.add(cc);
+    apptResource.setServiceCategory(categories);
+
+    // serviceType
+    List<org.hl7.fhir.r4.model.CodeableConcept> types = new ArrayList<>();
+    CodeableConcept stcc = new CodeableConcept();
+    stcc.setText("type 1");
+    Coding serviceTypesCoding = stcc.addCoding();
+    serviceTypesCoding.setDisplay("type 1 display");
+    serviceTypesCoding.setSystem("type 1 system");
+    serviceTypesCoding.setCode("type1");
+
+    types.add(stcc);
+    apptResource.setServiceType(types);
+
+    //adding a custom extension
+    List<Extension> extnList = new ArrayList<>();
+    Coding extnCoding = new Coding().setCode("extn code 1").setDisplay("extn display code");
+    extnList.add(new Extension()
+            .setUrl("http://fhir.league.com/r4/LeagueCareServiceBookings/StructureDefinition/custom-extension")
+            .setValue(new StringType("custom-exn-val")));
+    apptResource.setExtension(extnList);
+
+
+    // add all participants
+    List<Appointment.AppointmentParticipantComponent> aPList = new ArrayList<>();
+    for (org.hl7.fhir.r4.model.Encounter.EncounterParticipantComponent eParticipant : encounterResource.getParticipant()) {
+      Appointment.AppointmentParticipantComponent aProvider = new Appointment.AppointmentParticipantComponent();
+      // Add provider
+      aProvider.setPeriod(eParticipant.getPeriod());
+      aProvider.setActor(eParticipant.getIndividual());
+      aProvider.setStatus(Appointment.ParticipationStatus.ACCEPTED);
+
+      aPList.add(aProvider);
+
+
+      // Add location
+      Appointment.AppointmentParticipantComponent aLoc = new Appointment.AppointmentParticipantComponent();
+      aLoc.setActor(encounterResource.getLocation().get(0).getLocation());
+      aLoc.setStatus(Appointment.ParticipationStatus.ACCEPTED);
+      aPList.add(aLoc);
+
+      //Add patient
+      Appointment.AppointmentParticipantComponent aPatient = new Appointment.AppointmentParticipantComponent();
+      aPatient.setActor(encounterResource.getSubject());
+      aPatient.setStatus(Appointment.ParticipationStatus.ACCEPTED);
+      aPList.add(aPatient);
+
+    }
+
+    //start and end
+    LocalDateTime start = LocalDateTime.now().minusHours((long) (Math.random() * (10)));
+    LocalDateTime end = start.plusHours(1);
+
+    apptResource.setStart(java.sql.Timestamp.valueOf(start));
+    apptResource.setEnd(java.sql.Timestamp.valueOf(end));
+
+    apptResource.setParticipant(aPList);
+
+
+    return newEntry(bundle, apptResource, apptResource.getId());
+
   }
 
   /**
@@ -1303,6 +1464,7 @@ public class FhirR4 {
     org.hl7.fhir.r4.model.Encounter encounterResource =
         (org.hl7.fhir.r4.model.Encounter) encounterEntry.getResource();
     claimResource.setStatus(ClaimStatus.ACTIVE);
+    claimResource.setMeta(new Meta().setLastUpdated(new Date(encounter.start)));
     CodeableConcept type = new CodeableConcept();
     type.getCodingFirstRep().setSystem("http://terminology.hl7.org/CodeSystem/claim-type");
     EncounterType encType = EncounterType.fromString(encounter.type);
@@ -2036,8 +2198,8 @@ public class FhirR4 {
         }
       }
 
-      if (meta.hasProfile()) {
-        observationResource.setMeta(meta);
+      if (!observationResource.hasMeta()) {
+        observationResource.setMeta(new Meta().setLastUpdated(Date.from(Instant.now())));
       }
     }
 

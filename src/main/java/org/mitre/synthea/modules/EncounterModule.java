@@ -280,8 +280,14 @@ public final class EncounterModule extends Module {
       Map.entry(13, "60,Nutrition"),
       Map.entry(14, "269,Bowel"),
       Map.entry(15, "141,Psychiatry"),
-      Map.entry(16, "576,Rehabilitation")
+      Map.entry(16, "576,Rehabilitation"),
+      Map.entry(17,  "177,Neurology"),
+      Map.entry(18,  "303,Correctional Services")
     );
+  }
+  public static String getServiceTypeByEncounterType(int encounterType) {
+    Map<Integer, String> map = EncounterTypeToServiceTypeMap(encounterType);
+    return map.get(encounterType);
   }
 
 
