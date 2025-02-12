@@ -1598,8 +1598,6 @@ public class FhirR4 {
                                            Encounter encounter, Claim claim) {
     ExplanationOfBenefit eob = new ExplanationOfBenefit();
     Meta meta = new Meta();
-      // meta.addProfile(
-      //     "https://www.hl7.org/fhir/R4/explanationofbenefit.html").setLastUpdated(Date.from(Instant.now()));
     meta.setLastUpdated(new Date(encounter.start));
     eob.setMeta(meta);
 
@@ -2750,6 +2748,7 @@ public class FhirR4 {
 
     medicationResource.setMedication(mapCodeToCodeableConcept(code, system));
     medicationResource.setEffective(new DateTimeType(new Date(medication.start)));
+    medicationResource.setMeta(new Meta().setLastUpdated(new Date(medication.start)));
 
     medicationResource.setStatus(MedicationAdministration.MedicationAdministrationStatus.COMPLETED);
 
@@ -2825,10 +2824,7 @@ public class FhirR4 {
     if (labsOnly && USE_US_CORE_IG) {      
       org.hl7.fhir.r4.model.Encounter encounterResource =
           (org.hl7.fhir.r4.model.Encounter) encounterEntry.getResource();
-      reportResource.addPerformer(encounterResource.getServiceProvider());      
-      Meta meta = new Meta();
-      meta.setLastUpdated(new Date(report.start));
-      reportResource.setMeta(meta);
+      reportResource.addPerformer(encounterResource.getServiceProvider());
     }
     reportResource.setStatus(DiagnosticReportStatus.FINAL);
     if (labsOnly) {
@@ -2840,6 +2836,12 @@ public class FhirR4 {
     reportResource.setEncounter(new Reference(encounterEntry.getFullUrl()));
     reportResource.setEffective(convertFhirDateTime(report.start, true));
     reportResource.setIssued(new Date(report.start));
+
+    if(!reportResource.hasMeta()){
+    Meta meta = new Meta();
+    meta.setLastUpdated(new Date(report.start));
+    reportResource.setMeta(meta);
+    }
 
     if (shouldExport(org.hl7.fhir.r4.model.Observation.class)) {
       // if observations are not exported, we can't reference them
@@ -3275,6 +3277,7 @@ public class FhirR4 {
 
     Date startDate = new Date(imagingStudy.start);
     imagingStudyResource.setStarted(startDate);
+    imagingStudyResource.setMeta(new Meta().setLastUpdated(startDate));
 
     // Convert the series into their FHIR equivalents
     int numberOfSeries = imagingStudy.series.size();
