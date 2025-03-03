@@ -96,11 +96,12 @@ public abstract class FhirGroupExporterR4 {
         outFilePath = f.toPath().resolve("groupInformation" + stop + ".json");
       }
 
-      try {
-        Files.write(outFilePath, Collections.singleton(groupJson), StandardOpenOption.CREATE_NEW);
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
+      // try {
+      //   // // Files.write(outFilePath, Collections.singleton(groupJson), StandardOpenOption.CREATE_NEW);
+      //   System.out.print("No Group file.");
+      // } catch (IOException e) {
+      //   e.printStackTrace();
+      // }
     }
   }
 }

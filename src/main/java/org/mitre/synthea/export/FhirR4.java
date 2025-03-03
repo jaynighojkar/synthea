@@ -385,12 +385,16 @@ public class FhirR4 {
       }
     }
 
-    return versions;
+return versions;
   }
 
   public static FhirContext getContext() {
     return FHIR_CTX;
   }
+
+  
+  public static boolean shouldDocumentReferenceAdded, shouldDiagnosticReportAdded = true;
+  public static boolean shouldImmunizationAdded, shouldMedicationRequestAdded, shouldSupplyDeliveryAdded, shouldProvenanceAdded ,shouldDeviceAdded, shouldImagingStudyAdded = false;
 
   /**
    * Convert the given Person into a FHIR Bundle of the Patient and the
@@ -446,35 +450,36 @@ public class FhirR4 {
         }
       }
 
-      if (shouldExport(Device.class)) {
+      if (shouldExport(Device.class) && shouldDeviceAdded) {
         for (HealthRecord.Device device : encounter.devices) {
           device(personEntry, bundle, device);
         }
       }
 
-      if (shouldExport(SupplyDelivery.class)) {
+      if (shouldExport(SupplyDelivery.class) && shouldSupplyDeliveryAdded) {
         for (HealthRecord.Supply supply : encounter.supplies) {
           supplyDelivery(personEntry, bundle, supply, encounter);
         }
       }
 
-      if (shouldExport(MedicationRequest.class)) {
+      if (shouldExport(MedicationRequest.class) && shouldMedicationRequestAdded) {
         for (Medication medication : encounter.medications) {
           medicationRequest(person, personEntry, bundle, encounterEntry, encounter, medication);
         }
       }
 
-      if (shouldExport(Immunization.class)) {
+      if (shouldExport(Immunization.class) && shouldImmunizationAdded) {
         for (HealthRecord.Entry immunization : encounter.immunizations) {
           immunization(personEntry, bundle, encounterEntry, immunization);
         }
       }
 
-      if (shouldExport(DiagnosticReport.class)) {
+      if (shouldExport(DiagnosticReport.class) && shouldDiagnosticReportAdded) {
         for (Report report : encounter.reports) {
           report(personEntry, bundle, encounterEntry, report);
         }
       }
+      shouldDiagnosticReportAdded = !shouldDiagnosticReportAdded;
 
       if (shouldExport(org.hl7.fhir.r4.model.CarePlan.class)) {
         final boolean shouldExportCareTeam = shouldExport(CareTeam.class);
@@ -489,7 +494,7 @@ public class FhirR4 {
         }
       }
 
-      if (shouldExport(org.hl7.fhir.r4.model.ImagingStudy.class)) {
+      if (shouldExport(org.hl7.fhir.r4.model.ImagingStudy.class) && shouldImagingStudyAdded) {
         for (ImagingStudy imagingStudy : encounter.imagingStudies) {
           imagingStudy(personEntry, bundle, encounterEntry, imagingStudy);
         }
@@ -525,7 +530,7 @@ public class FhirR4 {
       }
     }
 
-    if (USE_US_CORE_IG && shouldExport(Provenance.class)) {
+    if (USE_US_CORE_IG && shouldExport(Provenance.class) && shouldProvenanceAdded) {
       // Add Provenance to the Bundle
       provenance(bundle, person, stopTime);
     }
@@ -1546,7 +1551,9 @@ public class FhirR4 {
               .setSystem("http://terminology.hl7.org/CodeSystem/claiminformationcategory")
               .setCode("info");
           informationComponent.setCategory(category);
-          claimResource.addSupportingInfo(informationComponent);
+          // No value add in adding supporting information component
+          // // claimResource.addSupportingInfo(informationComponent);
+
           claimItem.addInformationSequence(informationSequence);
           informationSequence++;
         }
@@ -1564,7 +1571,8 @@ public class FhirR4 {
             new ItemComponent(new PositiveIntType(itemSequence),
                 mapCodeToCodeableConcept(item.codes.get(0), SNOMED_URI));
         diagnosisItem.addDiagnosisSequence(conditionSequence);
-        claimResource.addItem(diagnosisItem);
+        // No value add in adding diagnosis items to Claims
+        // // claimResource.addItem(diagnosisItem);
 
         conditionSequence++;
       }
@@ -1704,9 +1712,6 @@ public class FhirR4 {
         .setSystem("https://bluebutton.cms.gov/resources/variables/clm_id")
         .setValue(claimResource.getId());
     // Hardcoded group id
-    eob.addIdentifier()
-        .setSystem("https://bluebutton.cms.gov/resources/identifier/claim-group")
-        .setValue("99999999999");
     eob.setClaim(new Reference().setReference(claimEntry.getFullUrl()));
     eob.setCreated(encounterResource.getPeriod().getEnd());
     eob.setType(claimResource.getType());
@@ -1737,8 +1742,9 @@ public class FhirR4 {
 
     List<ExplanationOfBenefit.ItemComponent> eobItem = new ArrayList<>();
     double totalPayment = 0;
-    // Get all the items info from the claim
-    for (ItemComponent item : claimResource.getItem()) {
+    // Get only first items info from the claim
+    ItemComponent item = claimResource.getItemFirstRep(); 
+    {
       ExplanationOfBenefit.ItemComponent itemComponent = new ExplanationOfBenefit.ItemComponent();
       itemComponent.setSequence(item.getSequence());
       itemComponent.setQuantity(item.getQuantity());
@@ -2714,10 +2720,10 @@ public class FhirR4 {
     }
 
     // Create new administration for medication, if needed
-    if (medication.administration && shouldExport(MedicationAdministration.class)) {
-      medicationAdministration(person, personEntry, bundle, encounterEntry, medication,
-              medicationResource);
-    }
+    // if (medication.administration && shouldExport(MedicationAdministration.class)) {
+    //   medicationAdministration(person, personEntry, bundle, encounterEntry, medication,
+    //           medicationResource);
+    // }
 
     return medicationEntry;
   }
@@ -2908,8 +2914,9 @@ public class FhirR4 {
         "DiagnosticReport for note on encounter " + encounter.getId());
     newEntry(bundle, reportResource, reportUUID);
 
-    if (shouldExport(DocumentReference.class)) {
-      // Add a DocumentReference
+    // if (shouldExport(DocumentReference.class)) {
+    if (shouldDocumentReferenceAdded) {
+      // No need for adding a DocumentReference
       DocumentReference documentReference = new DocumentReference();
       if (USE_US_CORE_IG) {
         Meta meta = new Meta();
@@ -2947,6 +2954,7 @@ public class FhirR4 {
 
       newEntry(bundle, documentReference, documentUUID);
     }
+    shouldDocumentReferenceAdded = !shouldDocumentReferenceAdded;
   }
 
   /**
@@ -3469,12 +3477,13 @@ public class FhirR4 {
   protected static org.hl7.fhir.r4.model.Location providerLocation(
           Bundle bundle, Provider provider) {
     org.hl7.fhir.r4.model.Location location = new org.hl7.fhir.r4.model.Location();
-    if (USE_US_CORE_IG) {
-      Meta meta = new Meta();
-      meta.addProfile(
-          "http://hl7.org/fhir/us/core/StructureDefinition/us-core-location").setLastUpdated(Date.from(Instant.now()));
-      location.setMeta(meta);
-    }
+    
+    Meta meta = new Meta();
+    meta.addProfile(
+        "http://hl7.org/fhir/us/core/StructureDefinition/us-core-location");
+    meta.setLastUpdated(Date.from(Instant.now()));
+    location.setMeta(meta);
+    
     location.setStatus(LocationStatus.ACTIVE);
     location.setName(provider.name);
     // set telecom
