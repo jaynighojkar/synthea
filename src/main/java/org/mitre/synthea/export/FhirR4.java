@@ -393,8 +393,11 @@ return versions;
   }
 
   
-  public static boolean shouldDocumentReferenceAdded, shouldDiagnosticReportAdded = true;
-  public static boolean shouldImmunizationAdded, shouldMedicationRequestAdded, shouldSupplyDeliveryAdded, shouldProvenanceAdded ,shouldDeviceAdded, shouldImagingStudyAdded = false;
+  public static int shouldPractitionerAdded = 0;
+  public static int shouldAppointmentAdded = 0;
+  public static int shouldDocumentReferenceAdded = 0;
+  public static int shouldDiagnosticReportAdded = 0;
+  public static boolean shouldClaimAdded, shouldObservationAdded, shouldImmunizationAdded, shouldMedicationRequestAdded, shouldSupplyDeliveryAdded, shouldProvenanceAdded ,shouldDeviceAdded, shouldImagingStudyAdded = false;
 
   /**
    * Convert the given Person into a FHIR Bundle of the Patient and the
@@ -436,13 +439,14 @@ return versions;
         // If the Observation contains an attachment, use a Media resource, since
         // Observation resources in v4 don't support Attachments
         if (observation.value instanceof Attachment) {
-          if (shouldExportMedia) {
+          if (shouldExportMedia && shouldObservationAdded) {
             media(personEntry, bundle, encounterEntry, observation);
           }
-        } else if (shouldExportObservation) {
+        } else if (shouldExportObservation && shouldObservationAdded) {
           observation(personEntry, bundle, encounterEntry, observation);
         }
       }
+      shouldObservationAdded = !shouldObservationAdded;
 
       if (shouldExport(org.hl7.fhir.r4.model.Procedure.class)) {
         for (Procedure procedure : encounter.procedures) {
@@ -474,12 +478,19 @@ return versions;
         }
       }
 
-      if (shouldExport(DiagnosticReport.class) && shouldDiagnosticReportAdded) {
+      if (shouldExport(DiagnosticReport.class) && shouldDiagnosticReportAdded == 175) {
         for (Report report : encounter.reports) {
           report(personEntry, bundle, encounterEntry, report);
         }
       }
-      shouldDiagnosticReportAdded = !shouldDiagnosticReportAdded;
+      if(shouldDiagnosticReportAdded < 176)
+      {
+        shouldDiagnosticReportAdded++;
+      }
+      else
+      {
+        shouldDiagnosticReportAdded = 0;
+      }
 
       if (shouldExport(org.hl7.fhir.r4.model.CarePlan.class)) {
         final boolean shouldExportCareTeam = shouldExport(CareTeam.class);
@@ -501,8 +512,15 @@ return versions;
       }
 
       // add appointment to every encounter as well
-      if (shouldExport(org.hl7.fhir.r4.model.Appointment.class)) {
+      if (shouldExport(org.hl7.fhir.r4.model.Appointment.class) && shouldAppointmentAdded == 120) {
         encounterAppointment(person, personEntry, bundle, encounter, encounterEntry);
+      }
+      if(shouldAppointmentAdded < 121)
+      {
+        shouldAppointmentAdded++;
+      }
+      else{
+        shouldAppointmentAdded = 0;
       }
 
       // add allergy intolerance to every encounter as well
@@ -518,7 +536,7 @@ return versions;
         clinicalNote(person, personEntry, bundle, encounterEntry, clinicalNoteText, lastNote);
       }
 
-      if (shouldExport(org.hl7.fhir.r4.model.Claim.class)) {
+      if (shouldExport(org.hl7.fhir.r4.model.Claim.class) && shouldClaimAdded) {
         // one claim per encounter
         BundleEntryComponent encounterClaim =
             encounterClaim(person, personEntry, bundle, encounterEntry, encounter);
@@ -528,6 +546,7 @@ return versions;
               encounterClaim, encounter, encounter.claim);
         }
       }
+      shouldClaimAdded = !shouldClaimAdded;
     }
 
     if (USE_US_CORE_IG && shouldExport(Provenance.class) && shouldProvenanceAdded) {
@@ -1040,7 +1059,7 @@ return versions;
       if (TRANSACTION_BUNDLE) {
         encounterResource.addParticipant().setIndividual(new Reference(
                 ExportHelper.buildFhirNpiSearchUrl(encounter.clinician)));
-      } else {
+      } else if(shouldPractitionerAdded == 4){
         String practitionerFullUrl = findPractitioner(encounter.clinician, bundle);
         if (practitionerFullUrl != null) {
           encounterResource.addParticipant().setIndividual(new Reference(practitionerFullUrl));
@@ -1049,6 +1068,14 @@ return versions;
           encounterResource.addParticipant().setIndividual(
                   new Reference(practitioner.getFullUrl()));
         }
+      }
+      if(shouldPractitionerAdded < 5)
+      {
+        shouldPractitionerAdded++;
+      }
+      else
+      {
+        shouldPractitionerAdded = 0;
       }
       encounterResource.getParticipantFirstRep().getIndividual()
           .setDisplay(encounter.clinician.getFullname());
@@ -2912,10 +2939,11 @@ return versions;
     // IMPORTANT: if this function is called more than once per encounter, change here and below!
     String reportUUID = ExportHelper.buildUUID(person, 0,
         "DiagnosticReport for note on encounter " + encounter.getId());
-    newEntry(bundle, reportResource, reportUUID);
+    
+    // // newEntry(bundle, reportResource, reportUUID);
 
     // if (shouldExport(DocumentReference.class)) {
-    if (shouldDocumentReferenceAdded) {
+    if (shouldDocumentReferenceAdded == 60) {
       // No need for adding a DocumentReference
       DocumentReference documentReference = new DocumentReference();
       if (USE_US_CORE_IG) {
@@ -2954,7 +2982,13 @@ return versions;
 
       newEntry(bundle, documentReference, documentUUID);
     }
-    shouldDocumentReferenceAdded = !shouldDocumentReferenceAdded;
+    if(shouldDocumentReferenceAdded < 61)
+    {
+      shouldDocumentReferenceAdded++;
+    }
+    else{
+      shouldDocumentReferenceAdded = 0;
+    }
   }
 
   /**
